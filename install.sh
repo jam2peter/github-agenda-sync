@@ -15,12 +15,16 @@ else
   echo '.env already exists; keeping it.'
 fi
 
-chmod +x github-agenda-sync || true
+chmod +x github-agenda-sync scripts/configure_github.sh || true
 
 echo
-echo 'Next:'
-echo '  1. Edit .env with your GitHub repositories and Google OAuth values.'
-echo '  2. Run: ./github-agenda-sync doctor'
-echo '  3. Run: ./github-agenda-sync sync'
+echo 'Installation ready.'
 echo
-echo 'For GitHub Actions, copy .github/workflows/github-agenda-sync.yml into the repository where you want automation and configure the documented secrets/variables.'
+echo 'Recommended next step:'
+echo '  ./github-agenda-sync setup'
+echo
+echo 'Then:'
+echo '  ./github-agenda-sync doctor'
+echo '  ./github-agenda-sync sync'
+echo
+echo 'For automatic operation, the setup command configures GitHub Actions secrets and variables.'
