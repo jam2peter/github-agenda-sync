@@ -1,0 +1,54 @@
+name: GitHub Agenda Sync
+
+on:
+  workflow_dispatch:
+  issues:
+    types: [opened, edited, closed, reopened]
+  schedule:
+    - cron: '15,45 * * * *'
+
+concurrency:
+  group: github-agenda-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate configuration
+        env:
+          GH_AGENDA_GITHUB_TOKEN: ${{ secrets.GH_AGENDA_GITHUB_TOKEN }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GH_AGENDA_REPOSITORIES: ${{ vars.GH_AGENDA_REPOSITORIES }}
+        run: |
+          missing=0
+          for name in GH_AGENDA_GITHUB_TOKEN GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET GOOGLE_REFRESH_TOKEN GH_AGENDA_REPOSITORIES; do
+            if [ -z "${!name}" ]; then
+              echo "$name is not configured."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Sync GitHub Issues to Google
+        env:
+          GH_AGENDA_GITHUB_TOKEN: ${{ secrets.GH_AGENDA_GITHUB_TOKEN }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GH_AGENDA_REPOSITORIES: ${{ vars.GH_AGENDA_REPOSITORIES }}
+          GOOGLE_TASKLIST_ID: ${{ vars.GOOGLE_TASKLIST_ID || '@default' }}
+          GOOGLE_CALENDAR_ID: ${{ vars.GOOGLE_CALENDAR_ID || 'primary' }}
+          GOOGLE_TIMEZONE: ${{ vars.GOOGLE_TIMEZONE || 'UTC' }}
+          GOOGLE_EVENT_DEFAULT_MINUTES: ${{ vars.GOOGLE_EVENT_DEFAULT_MINUTES || '60' }}
+        run: python3 src/github_agenda_sync.py
