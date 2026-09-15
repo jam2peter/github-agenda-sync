@@ -19,7 +19,7 @@ class CoreTests(unittest.TestCase):
 
     def test_managed(self):
         self.assertTrue(mod.managed({"managed": "true"}))
-        self.assertTrue(mod.managed({})) is False
+        self.assertFalse(mod.managed({}))
         self.assertFalse(mod.managed({"managed": "false"}))
 
     def test_chosen_date_prefers_start_date(self):
