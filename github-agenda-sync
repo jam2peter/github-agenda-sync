@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+load_env() {
+  if [ -f .env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . ./.env
+    set +a
+  fi
+}
+
+cmd="${1:-help}"
+case "$cmd" in
+  init)
+    exec "$ROOT/install.sh"
+    ;;
+  doctor)
+    load_env
+    failed=0
+    check() {
+      local name="$1" value="${2:-}"
+      if [ -n "$value" ]; then
+        printf '%-34s PASS\n' "$name"
+      else
+        printf '%-34s FAIL\n' "$name"
+        failed=1
+      fi
+    }
+    command -v python3 >/dev/null && printf '%-34s PASS\n' 'Python 3' || { printf '%-34s FAIL\n' 'Python 3'; failed=1; }
+    check 'GitHub token' "${GH_AGENDA_GITHUB_TOKEN:-}"
+    check 'Repository list' "${GH_AGENDA_REPOSITORIES:-}"
+    check 'Google client id' "${GOOGLE_CLIENT_ID:-}"
+    check 'Google client secret' "${GOOGLE_CLIENT_SECRET:-}"
+    check 'Google refresh token' "${GOOGLE_REFRESH_TOKEN:-}"
+    check 'Google timezone' "${GOOGLE_TIMEZONE:-}"
+    if [ "$failed" -eq 0 ]; then
+      echo 'SYSTEM_READY=YES'
+    else
+      echo 'SYSTEM_READY=NO'
+      exit 1
+    fi
+    ;;
+  sync)
+    load_env
+    exec python3 "$ROOT/src/github_agenda_sync.py"
+    ;;
+  status)
+    load_env
+    echo "REPOSITORIES=${GH_AGENDA_REPOSITORIES:-NOT_CONFIGURED}"
+    echo "TASKLIST=${GOOGLE_TASKLIST_ID:-@default}"
+    echo "CALENDAR=${GOOGLE_CALENDAR_ID:-primary}"
+    echo "TIMEZONE=${GOOGLE_TIMEZONE:-UTC}"
+    ;;
+  help|-h|--help)
+    cat <<'EOF'
+GitHub Agenda Sync
+
+Usage:
+  ./github-agenda-sync init
+  ./github-agenda-sync doctor
+  ./github-agenda-sync sync
+  ./github-agenda-sync status
+EOF
+    ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    exit 2
+    ;;
+esac
