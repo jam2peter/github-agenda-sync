@@ -4,12 +4,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 load_env() {
-  if [ -f .env ]; then
-    set -a
-    # shellcheck disable=SC1091
-    . ./.env
-    set +a
-  fi
+  if [ -f .env ]; then set -a; . ./.env; set +a; fi
 }
 
 cmd="${1:-help}"
@@ -18,49 +13,72 @@ case "$cmd" in
     exec "$ROOT/install.sh"
     ;;
   setup)
+    echo; echo "GitHub Agenda Sync setup"; echo
+    command -v python3 >/dev/null || { echo "ERROR: Python 3 is required."; exit 2; }
+    command -v gh >/dev/null || { echo "ERROR: GitHub CLI (gh) is required."; exit 2; }
+    gh auth status >/dev/null 2>&1 || { echo "GitHub login required. Running gh auth login..."; gh auth login; }
+
+    TARGET_REPO="${2:-$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)}"
+    [ -n "$TARGET_REPO" ] || { echo "ERROR: could not detect target GitHub repository."; exit 2; }
+    echo "Target repository: $TARGET_REPO"
+
+    read -r -p "Repositories to sync [$TARGET_REPO]: " GH_AGENDA_REPOSITORIES
+    GH_AGENDA_REPOSITORIES="${GH_AGENDA_REPOSITORIES:-$TARGET_REPO}"
+    read -r -p "Timezone [UTC]: " GOOGLE_TIMEZONE
+    GOOGLE_TIMEZONE="${GOOGLE_TIMEZONE:-UTC}"
+    read -r -p "Calendar ID [primary]: " GOOGLE_CALENDAR_ID
+    GOOGLE_CALENDAR_ID="${GOOGLE_CALENDAR_ID:-primary}"
+    read -r -p "Tasklist ID [@default]: " GOOGLE_TASKLIST_ID
+    GOOGLE_TASKLIST_ID="${GOOGLE_TASKLIST_ID:-@default}"
+
+    read -r -p "Path to Google OAuth Desktop client JSON: " GOOGLE_CLIENT_JSON
+    GOOGLE_CLIENT_JSON="${GOOGLE_CLIENT_JSON/#\~/$HOME}"
+    [ -f "$GOOGLE_CLIENT_JSON" ] || { echo "ERROR: OAuth client JSON not found."; exit 2; }
+
+    VENV="$ROOT/.venv"
+    if [ ! -x "$VENV/bin/python" ]; then python3 -m venv "$VENV"; fi
+    "$VENV/bin/python" -m pip install -q --disable-pip-version-check google-auth-oauthlib
+    CRED_FILE="$(mktemp)"
+    trap 'rm -f "$CRED_FILE"' EXIT
+    "$VENV/bin/python" "$ROOT/scripts/google_oauth_setup.py" "$GOOGLE_CLIENT_JSON" --env-file "$CRED_FILE"
+    set -a; . "$CRED_FILE"; set +a
+
+    GH_AGENDA_GITHUB_TOKEN="$(gh auth token)"
+    export GH_AGENDA_REPOSITORIES GOOGLE_TIMEZONE GOOGLE_CALENDAR_ID GOOGLE_TASKLIST_ID
+    export GH_AGENDA_GITHUB_TOKEN GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET GOOGLE_REFRESH_TOKEN
     chmod +x "$ROOT/scripts/configure_github.sh" || true
-    echo
-    echo "GitHub Agenda Sync guided setup"
-    echo
-    if [ ! -f .env ]; then
-      cp .env.example .env
-      echo "Created .env from template."
-    fi
-    if [ -f "$ROOT/scripts/google_oauth_setup.py" ]; then
-      echo "Google OAuth helper:"
-      echo "  python3 scripts/google_oauth_setup.py /path/to/google-oauth-client.json"
-      echo
-    fi
-    exec "$ROOT/scripts/configure_github.sh" "${2:-}"
+    "$ROOT/scripts/configure_github.sh" "$TARGET_REPO"
+
+    cat > .env <<EOF
+GH_AGENDA_REPOSITORIES="$GH_AGENDA_REPOSITORIES"
+GOOGLE_TASKLIST_ID="$GOOGLE_TASKLIST_ID"
+GOOGLE_CALENDAR_ID="$GOOGLE_CALENDAR_ID"
+GOOGLE_TIMEZONE="$GOOGLE_TIMEZONE"
+GOOGLE_EVENT_DEFAULT_MINUTES="60"
+EOF
+    chmod 600 .env
+    echo; echo "SETUP_COMPLETE=YES"
+    echo "Run: ./github-agenda-sync doctor"
+    echo "Then: gh workflow run github-agenda-sync.yml --repo $TARGET_REPO"
     ;;
   doctor)
     load_env
     failed=0
-    check() {
-      local name="$1" value="${2:-}"
-      if [ -n "$value" ]; then
-        printf '%-34s PASS\n' "$name"
-      else
-        printf '%-34s FAIL\n' "$name"
-        failed=1
-      fi
-    }
     command -v python3 >/dev/null && printf '%-34s PASS\n' 'Python 3' || { printf '%-34s FAIL\n' 'Python 3'; failed=1; }
-    check 'GitHub token' "${GH_AGENDA_GITHUB_TOKEN:-}"
-    check 'Repository list' "${GH_AGENDA_REPOSITORIES:-}"
-    check 'Google client id' "${GOOGLE_CLIENT_ID:-}"
-    check 'Google client secret' "${GOOGLE_CLIENT_SECRET:-}"
-    check 'Google refresh token' "${GOOGLE_REFRESH_TOKEN:-}"
-    check 'Google timezone' "${GOOGLE_TIMEZONE:-}"
-    if [ "$failed" -eq 0 ]; then
-      echo 'SYSTEM_READY=YES'
-    else
-      echo 'SYSTEM_READY=NO'
-      exit 1
-    fi
+    command -v gh >/dev/null && printf '%-34s PASS\n' 'GitHub CLI' || { printf '%-34s FAIL\n' 'GitHub CLI'; failed=1; }
+    gh auth status >/dev/null 2>&1 && printf '%-34s PASS\n' 'GitHub authentication' || { printf '%-34s FAIL\n' 'GitHub authentication'; failed=1; }
+    [ -n "${GH_AGENDA_REPOSITORIES:-}" ] && printf '%-34s PASS\n' 'Repository list' || { printf '%-34s FAIL\n' 'Repository list'; failed=1; }
+    [ -n "${GOOGLE_TIMEZONE:-}" ] && printf '%-34s PASS\n' 'Google timezone' || { printf '%-34s FAIL\n' 'Google timezone'; failed=1; }
+    if [ "$failed" -eq 0 ]; then echo 'SYSTEM_READY=YES'; else echo 'SYSTEM_READY=NO'; exit 1; fi
     ;;
   sync)
     load_env
+    : "${GH_AGENDA_GITHUB_TOKEN:=$(gh auth token 2>/dev/null || true)}"
+    export GH_AGENDA_GITHUB_TOKEN
+    if [ -z "${GOOGLE_CLIENT_ID:-}" ] || [ -z "${GOOGLE_CLIENT_SECRET:-}" ] || [ -z "${GOOGLE_REFRESH_TOKEN:-}" ]; then
+      echo "Local sync requires Google credentials in the environment. The recommended mode is GitHub Actions." >&2
+      exit 2
+    fi
     exec python3 "$ROOT/src/github_agenda_sync.py"
     ;;
   status)
@@ -73,17 +91,12 @@ case "$cmd" in
   help|-h|--help)
     cat <<'EOF'
 GitHub Agenda Sync
-
 Usage:
-  ./github-agenda-sync init
   ./github-agenda-sync setup [owner/repository]
   ./github-agenda-sync doctor
   ./github-agenda-sync sync
   ./github-agenda-sync status
 EOF
     ;;
-  *)
-    echo "Unknown command: $cmd" >&2
-    exit 2
-    ;;
+  *) echo "Unknown command: $cmd" >&2; exit 2 ;;
 esac
