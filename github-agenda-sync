@@ -17,6 +17,22 @@ case "$cmd" in
   init)
     exec "$ROOT/install.sh"
     ;;
+  setup)
+    chmod +x "$ROOT/scripts/configure_github.sh" || true
+    echo
+    echo "GitHub Agenda Sync guided setup"
+    echo
+    if [ ! -f .env ]; then
+      cp .env.example .env
+      echo "Created .env from template."
+    fi
+    if [ -f "$ROOT/scripts/google_oauth_setup.py" ]; then
+      echo "Google OAuth helper:"
+      echo "  python3 scripts/google_oauth_setup.py /path/to/google-oauth-client.json"
+      echo
+    fi
+    exec "$ROOT/scripts/configure_github.sh" "${2:-}"
+    ;;
   doctor)
     load_env
     failed=0
@@ -60,6 +76,7 @@ GitHub Agenda Sync
 
 Usage:
   ./github-agenda-sync init
+  ./github-agenda-sync setup [owner/repository]
   ./github-agenda-sync doctor
   ./github-agenda-sync sync
   ./github-agenda-sync status
