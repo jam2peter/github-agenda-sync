@@ -116,6 +116,37 @@ GitHub Agenda Sync
 
 Google never writes back to GitHub.
 
+
+## JamPeter Ops Stack
+
+GitHub Agenda Sync is the **Schedule** layer of the
+[JamPeter Ops Stack](https://github.com/jam2peter/ops-stack).
+
+```text
+Issue Repo Admin
+      ↓
+Project V2 Sync
+      ↓
+GitHub Agenda Sync   ← this project
+      ↓
+human execution
+      ↓
+OIDC Site Control / SafeDeploy
+      ↓
+HTTPS Readback
+```
+
+The integration principle is intentionally one-way at this layer:
+
+- GitHub Issues remain authoritative;
+- Project V2 provides shared operational governance;
+- GitHub Agenda Sync projects selected Issues into Google Tasks/Calendar for
+  personal execution;
+- Google does not authorize or trigger deployment by itself.
+
+See the full lifecycle and adoption modes in the Ops Stack repository and at
+https://jampeter.com.br/apps/ops-stack/.
+
 ## Tests
 
 The repository includes unit tests for metadata parsing, date selection, all-day event generation and idempotent Calendar normalization.
