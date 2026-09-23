@@ -88,7 +88,7 @@ And these variables:
 - `GOOGLE_CALENDAR_ID`
 - `GOOGLE_TIMEZONE`
 
-The included workflow runs on issue changes, manual dispatch, and a twice-hourly schedule.
+The included workflow runs on issue changes, manual dispatch, and a twice-hourly schedule. If setup has not been completed, scheduled runs report `NOT_CONFIGURED`, skip synchronization and finish successfully instead of creating recurring red failures.
 
 ## Commands
 
