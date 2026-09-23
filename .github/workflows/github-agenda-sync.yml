@@ -23,7 +23,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Validate configuration
+      - name: Detect configuration
+        id: config
         env:
           GH_AGENDA_GITHUB_TOKEN: ${{ secrets.GH_AGENDA_GITHUB_TOKEN }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
@@ -31,16 +32,31 @@ jobs:
           GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
           GH_AGENDA_REPOSITORIES: ${{ vars.GH_AGENDA_REPOSITORIES }}
         run: |
-          missing=0
+          missing=()
           for name in GH_AGENDA_GITHUB_TOKEN GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET GOOGLE_REFRESH_TOKEN GH_AGENDA_REPOSITORIES; do
             if [ -z "${!name}" ]; then
-              echo "$name is not configured."
-              missing=1
+              missing+=("$name")
             fi
           done
-          exit "$missing"
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "GH_AGENDA_STATUS=NOT_CONFIGURED"
+            printf 'Missing required configuration: %s\n' "${missing[*]}"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "GH_AGENDA_STATUS=CONFIGURED"
+          fi
+
+      - name: Report neutral unconfigured state
+        if: steps.config.outputs.configured != 'true'
+        run: |
+          echo "GitHub Agenda Sync is installed but not configured."
+          echo "Run ./github-agenda-sync setup to enable synchronization."
+          echo "No Google or GitHub synchronization was attempted."
 
       - name: Sync GitHub Issues to Google
+        if: steps.config.outputs.configured == 'true'
         env:
           GH_AGENDA_GITHUB_TOKEN: ${{ secrets.GH_AGENDA_GITHUB_TOKEN }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
